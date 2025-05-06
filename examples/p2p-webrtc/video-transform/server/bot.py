@@ -27,8 +27,6 @@ from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.processors.filters.function_filter import FunctionFilter
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
-from pipecat.processors.gstreamer.pipeline_source import GStreamerPipelineSource
-from pipecat.processors.producer_processor import ProducerProcessor
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.google.llm import GoogleLLMService
@@ -149,15 +147,9 @@ async def run_bot(webrtc_connection):
     reset_handler = ResetPlayingHandler()
 
     async def is_play_pipeline(frame: Frame):
-        logger.debug(
-            f"Checking if frame is PlayPipelineFrame: {frame}, current is_playing: {is_playing}"
-        )
         return isinstance(frame, PlayPipelineFrame)
 
     async def is_not_playing(frame: Frame):
-        logger.debug(
-            f"Checking if the current status not playing, current is_playing: {is_playing}"
-        )
         return not is_playing
 
     pipeline = Pipeline(

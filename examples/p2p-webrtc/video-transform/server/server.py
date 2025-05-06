@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from typing import Dict
 
 import uvicorn
+from aiortc import RTCIceServer
 from bot import run_bot
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI
@@ -18,7 +19,7 @@ from fastapi.responses import RedirectResponse
 from loguru import logger
 from pipecat_ai_small_webrtc_prebuilt.frontend import SmallWebRTCPrebuiltUI
 
-from pipecat.transports.network.webrtc_connection import IceServer, SmallWebRTCConnection
+from pipecat.transports.network.webrtc_connection import SmallWebRTCConnection
 
 # Load environment variables
 load_dotenv(override=True)
@@ -29,7 +30,7 @@ app = FastAPI()
 pcs_map: Dict[str, SmallWebRTCConnection] = {}
 
 ice_servers = [
-    IceServer(
+    RTCIceServer(
         urls="stun:stun.l.google.com:19302",
     )
 ]

@@ -3,7 +3,6 @@ import dataclasses
 import threading
 from typing import Optional
 
-import numpy as np
 from loguru import logger
 
 from pipecat.frames.frames import (
@@ -67,6 +66,7 @@ class GStreamerPipelinePlayer(FrameProcessor):
             raise
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._pipeline_lock = threading.Lock()
+        self._pipeline_stopped_condition = threading.Condition(self._pipeline_lock)
         self._pipeline: Optional[Gst.Pipeline] = None
         self._pipeline_thread: Optional[threading.Thread] = None
         self._glib_loop: Optional[GLib.MainLoop] = None
@@ -103,16 +103,57 @@ class GStreamerPipelinePlayer(FrameProcessor):
                 await self.push_frame(ErrorFrame(f"{self}: Event loop not available"))
                 return  # Don't proceed
 
-            self._start_pipeline_thread(frame.pipeline_description)
+            # Use run_in_executor to avoid blocking the event loop with lock acquisition
+            # and potential waiting on the condition variable
+            await self._loop.run_in_executor(
+                None, self._start_pipeline_thread, frame.pipeline_description
+            )
+            # TODO: Consider if PlayPipelineFrameEnd should be pushed from _run_pipeline on EOS/Error
+            # Pushing it here means it arrives immediately after the request, not when playback finishes.
+            # Push a frame to indicate the end of the pipeline
+            await self.push_frame(PlayPipelineFrameEnd(), FrameDirection.DOWNSTREAM)
         else:
             await self.push_frame(frame, direction)
 
     def _start_pipeline_thread(self, pipeline_description: str):
-        """Stops any existing pipeline and starts a new one in a thread."""
+        """Stops any existing pipeline and starts a new one in a thread.
+        Ensures the previous thread has fully stopped before starting the new one.
+        This method is designed to be run in a separate thread (e.g., via run_in_executor)
+        to avoid blocking the main asyncio loop.
+        """
         with self._pipeline_lock:
             logger.debug(f"{self}: Attempting to start pipeline: {pipeline_description}")
-            # Stop existing pipeline first
-            self._stop_pipeline_sync()  # This ensures cleanup before starting anew
+            # Wait for any existing pipeline thread to fully stop and clean up.
+            while self._pipeline_thread and self._pipeline_thread.is_alive():
+                logger.info(f"{self}: Existing pipeline thread found, stopping and waiting...")
+                # Call _stop_pipeline_sync without holding the lock recursively
+                # (it acquires the lock itself). This is slightly complex.
+                # A simpler model: _stop_pipeline_sync signals, we wait here.
+                if self._glib_loop and self._glib_loop.is_running():
+                    self._glib_loop.quit()
+                if self._pipeline:
+                    self._pipeline.set_state(Gst.State.NULL)
+
+                # Wait for the _stop_pipeline_sync (potentially called by cleanup or another thread)
+                # or the thread's own finally block to signal completion.
+                logger.debug(f"{self}: Waiting for pipeline stopped condition...")
+                self._pipeline_stopped_condition.wait(timeout=5.0)  # Add timeout
+                if self._pipeline_thread and self._pipeline_thread.is_alive():
+                    logger.warning(f"{self}: Pipeline thread still alive after waiting.")
+                    # Decide recovery strategy: maybe force kill? For now, log and proceed cautiously.
+                    # Break to prevent infinite loop if stop fails repeatedly.
+                    break
+                else:
+                    logger.debug(f"{self}: Pipeline thread confirmed stopped.")
+                    self._pipeline_thread = None  # Ensure it's None if wait succeeded
+
+            # If after waiting, the thread object still exists (e.g., timeout occurred), log it.
+            if self._pipeline_thread:
+                logger.warning(
+                    f"{self}: Proceeding to start new pipeline despite previous thread object still existing."
+                )
+                # Force set to None to allow new thread creation
+                self._pipeline_thread = None
 
             # Reset sink references for new pipeline
             self._audio_sink = None
@@ -279,11 +320,22 @@ class GStreamerPipelinePlayer(FrameProcessor):
                     self._glib_loop.quit()
                 self._glib_loop = None  # Clear loop reference
 
-            logger.info(f"{self} GStreamer Thread: Pipeline cleanup complete, thread exiting.")
+                logger.debug(f"{self} GStreamer Thread: Notifying pipeline stopped condition.")
+                self._pipeline_stopped_condition.notify_all()
 
-        # TODO: Handle this more gracefully
-        # Push a frame to indicate the end of the pipeline
-        self.push_frame(PlayPipelineFrameEnd(), FrameDirection.DOWNSTREAM)
+                # Clear the thread reference *only if* this thread is the one assigned
+                # This prevents a racing stop call from nulling out a *new* thread reference
+                if self._pipeline_thread == threading.current_thread():
+                    self._pipeline_thread = None
+                    logger.debug(
+                        f"{self} GStreamer Thread: Cleared self._pipeline_thread reference."
+                    )
+                else:
+                    logger.warning(
+                        f"{self} GStreamer Thread: self._pipeline_thread reference changed during execution, not clearing."
+                    )
+
+            logger.info(f"{self} GStreamer Thread: Pipeline cleanup complete, thread exiting.")
 
     def _on_pad_added(self, decodebin: Gst.Element, pad: Gst.Pad):
         """Handles dynamic pads added by decodebin."""
