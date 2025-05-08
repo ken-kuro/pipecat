@@ -3,8 +3,9 @@
 #
 # SPDX-License-Identifier: BSD 2-Clause License
 #
+import logging
 import os
-from typing import List
+from typing import Dict
 
 from deepgram.clients.live import LiveOptions
 from dotenv import load_dotenv
@@ -229,21 +230,11 @@ async def run_bot(webrtc_connection):
 
     gst = GStreamerPipelinePlayer()
 
-    messages: List[ChatCompletionSystemMessageParam] = [
-        {
-            "role": "system",
-            "content": "You are a helpful LLM in a WebRTC call. Your goal is to demonstrate your capabilities in a succinct way. Your output will be converted to audio so don't include special characters in your answers. Respond to what the user said in a creative and helpful way.",
-        },
-    ]
-
-    context = OpenAILLMContext(messages)
+    context = OpenAILLMContext()
     context_aggregator = llm.create_context_aggregator(context)
 
     # RTVI events for Pipecat client UI
     rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
-
-    # Create a simple pipeline with the normal flow plus a trigger
-    trigger = SimplePipelineTrigger()
 
     reset_handler = ResetPlayingHandler()
 
@@ -251,6 +242,8 @@ async def run_bot(webrtc_connection):
         return isinstance(frame, PlayPipelineFrame)
 
     async def is_not_playing(frame: Frame):
+        if is_playing:
+            logger.debug(f"Skipping {frame}")
         return not is_playing
 
     pipeline = Pipeline(
@@ -260,16 +253,14 @@ async def run_bot(webrtc_connection):
             stt,
             context_aggregator.user(),
             llm,
-            # Just for testing, remove in production
-            trigger,
             ParallelPipeline(
                 [
                     FunctionFilter(is_play_pipeline),
                     gst,
+                    reset_handler,
                 ],
                 [FunctionFilter(is_not_playing), tts],
             ),
-            reset_handler,
             context_aggregator.assistant(),
             pipecat_transport.output(),
         ]
