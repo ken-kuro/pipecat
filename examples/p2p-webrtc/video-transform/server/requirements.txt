@@ -5,4 +5,5 @@ aiortc
 opencv-python
 pipecat-ai[google,silero,webrtc,deepgram,openai,gstreamer]
 pipecat-ai-small-webrtc-prebuilt
+pipecat-ai-flows
 pygobject-stubs
