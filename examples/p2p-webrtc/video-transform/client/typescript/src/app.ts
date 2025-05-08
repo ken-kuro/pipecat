@@ -31,7 +31,12 @@ class WebRTCApp {
     }
 
     private initializeRTVIClient(): void {
-        const transport = new SmallWebRTCTransport();
+        const transport = new SmallWebRTCTransport({
+            waitForICEGathering: true,
+        });
+        transport.iceServers = [
+            { urls: "stun:stun.l.google.com:19302" },
+        ]
         const RTVIConfig: RTVIClientOptions = {
             params: {
                 baseUrl: "/api/offer"
