@@ -40,7 +40,7 @@ class PlayPipelineFrame(Frame):
 class PlayPipelineFrameEnd(Frame):
     """A custom frame to indicate the end of a play pipeline request."""
 
-    pass
+    error: str = dataclasses.field(default=None)
 
 
 # Step 2 & 3: Basic GStreamerPipelinePlayer class structure
@@ -108,10 +108,6 @@ class GStreamerPipelinePlayer(FrameProcessor):
             await self._loop.run_in_executor(
                 None, self._start_pipeline_thread, frame.pipeline_description
             )
-            # TODO: Consider if PlayPipelineFrameEnd should be pushed from _run_pipeline on EOS/Error
-            # Pushing it here means it arrives immediately after the request, not when playback finishes.
-            # Push a frame to indicate the end of the pipeline
-            await self.push_frame(PlayPipelineFrameEnd(), FrameDirection.DOWNSTREAM)
         else:
             await self.push_frame(frame, direction)
 
@@ -740,6 +736,16 @@ class GStreamerPipelinePlayer(FrameProcessor):
             self._report_error(f"GStreamer error from {msg_src_name}: {err}")
             if self._glib_loop:
                 self._glib_loop.quit()
+            if self._loop and self._loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    self.push_frame(ErrorFrame(f"GStreamer error: {err}")), self._loop
+                )
+                asyncio.run_coroutine_threadsafe(
+                    self.push_frame(
+                        PlayPipelineFrameEnd(error=err.__str__()), FrameDirection.DOWNSTREAM
+                    ),
+                    self._loop,
+                )
         elif msg_type == Gst.MessageType.EOS:
             logger.info(f"{self} GStreamer Thread: Bus End-Of-Stream from {msg_src_name}.")
             # Don't quit the loop immediately on EOS from elements other than the pipeline itself?
@@ -748,6 +754,10 @@ class GStreamerPipelinePlayer(FrameProcessor):
                 logger.info(f"{self} GStreamer Thread: Pipeline EOS received, quitting GLib loop.")
                 if self._glib_loop and self._glib_loop.is_running():
                     self._glib_loop.quit()
+                if self._loop and self._loop.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        self.push_frame(PlayPipelineFrameEnd()), self._loop
+                    )
             else:
                 logger.debug(
                     f"{self} GStreamer Thread: EOS from element '{msg_src_name}', not quitting loop yet."
