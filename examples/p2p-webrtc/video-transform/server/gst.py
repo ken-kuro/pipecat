@@ -23,7 +23,7 @@ try:
 except ImportError as err:
     logger.error(f"Failed to import GStreamer: {err}")
     logger.error(
-        "Please refer to https://gstreamer.freedesktop.org/documentation/tutorials/index.html?gi-language=c for more information on installation."
+        "Please refer to https://gstreamer.freedesktop.org/documentation/installing/index.html?gi-language=c for more information on installation."
     )
     raise Exception("GStreamer is not installed. Please install GStreamer to use this module.")
 
@@ -43,6 +43,7 @@ class PlayPipelineFrameEnd(Frame):
     error: str = dataclasses.field(default=None)
 
 
+# TODO: Make this one support simultaneous pipelines, currently, whenever a new pipeline is requested, the old one is stopped.
 # Step 2 & 3: Basic GStreamerPipelinePlayer class structure
 class GStreamerPipelinePlayer(FrameProcessor):
     """A Pipecat FrameProcessor that dynamically plays a GStreamer pipeline
@@ -82,7 +83,13 @@ class GStreamerPipelinePlayer(FrameProcessor):
         self._audio_sink_caps_str: str = f"audio/x-raw,format=S16LE,layout=interleaved,rate={self._audio_sample_rate},channels={self._audio_channels}"
         self._video_sink_caps_str: str = f"video/x-raw,format={self._video_format}, width={self._video_width},height={self._video_height}"
 
+        self._is_playing: bool = False
         logger.info("GStreamerPipelinePlayer initialized.")
+
+    @property
+    def is_playing(self):
+        """Returns True if the pipeline is currently playing."""
+        return self._is_playing
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         """Processes incoming frames, looking for PlayPipelineFrame."""
@@ -103,11 +110,17 @@ class GStreamerPipelinePlayer(FrameProcessor):
                 await self.push_frame(ErrorFrame(f"{self}: Event loop not available"))
                 return  # Don't proceed
 
+            logger.debug(f"{self}: Starting pipeline thread, setting is_playing to True.")
+            self._is_playing = True
             # Use run_in_executor to avoid blocking the event loop with lock acquisition
             # and potential waiting on the condition variable
             await self._loop.run_in_executor(
                 None, self._start_pipeline_thread, frame.pipeline_description
             )
+        # Just in case
+        elif isinstance(frame, PlayPipelineFrameEnd):
+            self._is_playing = False
+            logger.debug(f"{self}: PlayPipelineFrameEnd received, setting is_playing to False.")
         else:
             await self.push_frame(frame, direction)
 
@@ -736,6 +749,10 @@ class GStreamerPipelinePlayer(FrameProcessor):
             self._report_error(f"GStreamer error from {msg_src_name}: {err}")
             if self._glib_loop:
                 self._glib_loop.quit()
+
+            self._is_playing = False
+            logger.debug(f"{self} GStreamer Thread: Error occurred, setting is_playing to False")
+
             if self._loop and self._loop.is_running():
                 asyncio.run_coroutine_threadsafe(
                     self.push_frame(ErrorFrame(f"GStreamer error: {err}")), self._loop
@@ -754,6 +771,10 @@ class GStreamerPipelinePlayer(FrameProcessor):
                 logger.info(f"{self} GStreamer Thread: Pipeline EOS received, quitting GLib loop.")
                 if self._glib_loop and self._glib_loop.is_running():
                     self._glib_loop.quit()
+
+                self._is_playing = False
+                logger.debug(f"{self} GStreamer Thread: EOS received, setting is_playing to False")
+
                 if self._loop and self._loop.is_running():
                     asyncio.run_coroutine_threadsafe(
                         self.push_frame(PlayPipelineFrameEnd()), self._loop
