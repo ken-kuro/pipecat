@@ -113,12 +113,12 @@ async def end_conversation_handler(args: FlowArgs, flow_manager: FlowManager) ->
     return {"status": "completed"}
 
 
-async def transist_to_end(_: Dict, result: FlowResult, flow_manager: FlowManager):
+async def transits_to_end(_: Dict, result: FlowResult, flow_manager: FlowManager):
     """Handle the end of the conversation."""
     await flow_manager.set_node("end", create_end_node())
 
 
-async def transist_to_practice(_: Dict, result: FlowResult, flow_manager: FlowManager):
+async def transits_to_practice(_: Dict, result: FlowResult, flow_manager: FlowManager):
     """Handle the transition to the practice section."""
     await flow_manager.set_node("practice", create_practice_node())
 
@@ -166,7 +166,7 @@ def create_initial_node() -> NodeConfig:
                 properties={},
                 required=[],
                 handler=practice_transition_handler,
-                transition_callback=transist_to_practice,
+                transition_callback=transits_to_practice,
             ),
         ],
     }
@@ -216,7 +216,7 @@ def create_practice_node() -> NodeConfig:
                 properties={},
                 required=[],
                 handler=end_conversation_handler,
-                transition_callback=transist_to_end,
+                transition_callback=transits_to_end,
             ),
         ],
     }
