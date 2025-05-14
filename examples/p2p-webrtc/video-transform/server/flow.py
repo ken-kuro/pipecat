@@ -142,8 +142,9 @@ def create_initial_node() -> NodeConfig:
                 "content": (
                     f"Lesson goal: {lesson_goal}\n"
                     f"Available videos: {video_configs}\n"
-                    "Introduce the lesson, then present examples relevant, finally, move to practice.\n"
-                    "If a suitable video exists, call play_video function with the filename. Otherwise, after complete all task, use move_to_practice function to move to the next section.\n"
+                    "Your goal is to guide the student through the lesson following this sequence: Introduce topic, present examples, then move to practice.\n"
+                    "Rules for function calls:\n"
+                    "- When you decide to use a function, your response for that turn should *only* consist of the function call. Do not include any other text or speech.\n"
                 ),
             }
         ],
@@ -191,9 +192,11 @@ def create_practice_node() -> NodeConfig:
                 "content": (
                     f"Lesson goal: {lesson_goal}\n"
                     f"Available videos: {video_configs}\n"
-                    "You will help students practice new words in this lesson here by make them listen and repeat.\n"
-                    f"Encourage and correct as needed. If user do it wrong more than {retry_limit}, just summary that word and move on.\n"
-                    "After all the words, conclude the lesson, summarize key points, say good bye and use end_conversation function to end the conversation.\n"
+                    "You are in the practice section. Help students practice new words from the lesson. You can use videos if they are suitable for practice (e.g., showing a word and its pronunciation clearly).\n"
+                    f"Encourage and correct as needed. If the user makes a mistake more than {retry_limit} times for a word, summarize that word and move on.\n"
+                    "After all target words are practiced, conclude the lesson, summarize key points, say goodbye, and then use the `end_conversation` function."
+                    "Rules for function calls:\n"
+                    "- When you decide to use a function, your response for that turn should *only* consist of the function call. Do not include any other text or speech.\n"
                 ),
             }
         ],
