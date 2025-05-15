@@ -84,6 +84,8 @@ class GStreamerPipelinePlayer(FrameProcessor):
         self._video_sink_caps_str: str = f"video/x-raw,format={self._video_format}, width={self._video_width},height={self._video_height}"
 
         self._is_playing: bool = False
+        self._playback_event = None
+        self._playback_error = None
         logger.info("GStreamerPipelinePlayer initialized.")
 
     @property
@@ -110,13 +112,33 @@ class GStreamerPipelinePlayer(FrameProcessor):
                 await self.push_frame(ErrorFrame(f"{self}: Event loop not available"))
                 return  # Don't proceed
 
+            if self._is_playing:
+                logger.debug(f"{self}: Pipeline is already playing, stopping current pipeline.")
+                # TODO: Handle the interruption gracefully, similar to TTSService
+                # Wait for the current pipeline to stop before starting a new one
+                if self._playback_event:
+                    try:
+                        await asyncio.wait_for(self._playback_event.wait(), timeout=30)
+                    except asyncio.TimeoutError:
+                        logger.error("Timeout waiting for previous playback to finish.")
+
             logger.debug(f"{self}: Starting pipeline thread, setting is_playing to True.")
             self._is_playing = True
+            self._playback_event = asyncio.Event()  # Reset the event for the new playback
+            self._playback_error = None  # Reset any previous error
             # Use run_in_executor to avoid blocking the event loop with lock acquisition
             # and potential waiting on the condition variable
             await self._loop.run_in_executor(
                 None, self._start_pipeline_thread, frame.pipeline_description
             )
+            # Wait for EOS, error, or timeout
+            try:
+                await asyncio.wait_for(self._playback_event.wait(), timeout=120)
+            except asyncio.TimeoutError:
+                logger.error("Timeout waiting for playback to finish.")
+                self._report_error("Playback timeout")
+            finally:
+                self._is_playing = False
         # Just in case
         elif isinstance(frame, PlayPipelineFrameEnd):
             self._is_playing = False
@@ -747,6 +769,8 @@ class GStreamerPipelinePlayer(FrameProcessor):
             err, debug = message.parse_error()
             logger.error(f"{self} GStreamer Thread: Bus Error from {msg_src_name}: {err} ({debug})")
             self._report_error(f"GStreamer error from {msg_src_name}: {err}")
+            if self._playback_event:
+                self._loop.call_soon_threadsafe(self._playback_event.set)
             if self._glib_loop:
                 self._glib_loop.quit()
 
@@ -771,6 +795,9 @@ class GStreamerPipelinePlayer(FrameProcessor):
                 logger.info(f"{self} GStreamer Thread: Pipeline EOS received, quitting GLib loop.")
                 if self._glib_loop and self._glib_loop.is_running():
                     self._glib_loop.quit()
+
+                if self._playback_event:
+                    self._loop.call_soon_threadsafe(self._playback_event.set)
 
                 self._is_playing = False
                 logger.debug(f"{self} GStreamer Thread: EOS received, setting is_playing to False")
@@ -811,6 +838,8 @@ class GStreamerPipelinePlayer(FrameProcessor):
             frame = ErrorFrame(f"{self}: {error_message}")
             # Ensure thread-safety when interacting with asyncio loop
             asyncio.run_coroutine_threadsafe(self.push_frame(frame), self._loop)
+            if self._playback_event:
+                self._loop.call_soon_threadsafe(self._playback_event.set)
         else:
             logger.error(
                 f"{self}: Cannot push ErrorFrame, loop not available. Error was: {error_message}"

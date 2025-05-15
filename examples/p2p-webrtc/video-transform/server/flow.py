@@ -113,14 +113,19 @@ async def end_conversation_handler(args: FlowArgs, flow_manager: FlowManager) ->
     return {"status": "completed"}
 
 
-async def transits_to_end(_: Dict, result: FlowResult, flow_manager: FlowManager):
-    """Handle the end of the conversation."""
-    await flow_manager.set_node("end", create_end_node())
+async def transits_to_initial(_: Dict, result: FlowResult, flow_manager: FlowManager):
+    """Handle the transition to the initial node."""
+    await flow_manager.set_node("initial", create_initial_node())
 
 
 async def transits_to_practice(_: Dict, result: FlowResult, flow_manager: FlowManager):
     """Handle the transition to the practice section."""
     await flow_manager.set_node("practice", create_practice_node())
+
+
+async def transits_to_end(_: Dict, result: FlowResult, flow_manager: FlowManager):
+    """Handle the end of the conversation."""
+    await flow_manager.set_node("end", create_end_node())
 
 
 def create_initial_node() -> NodeConfig:
