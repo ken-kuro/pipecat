@@ -7,7 +7,7 @@ import os
 
 from dotenv import load_dotenv
 from flow import create_initial_node
-from gst import GStreamerPipelinePlayer, PlayPipelineFrame
+from gst_new import GStreamerPipelinePlayerNew, PlayPipelineFrame
 from loguru import logger
 from pipecat_flows import FlowManager
 
@@ -16,14 +16,20 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
     Frame,
+    InterimTranscriptionFrame,
+    TextFrame,
+    TranscriptionFrame,
+    TTSSpeakFrame,
 )
 from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from pipecat.processors.consumer_processor import ConsumerProcessor
 from pipecat.processors.filters.function_filter import FunctionFilter
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
+from pipecat.processors.producer_processor import ProducerProcessor
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.google.llm import GoogleLLMService
@@ -38,7 +44,7 @@ async def run_bot(webrtc_connection):
         audio_in_enabled=True,
         audio_out_enabled=True,
         audio_out_10ms_chunks=2,
-        audio_in_filter=NoisereduceFilter(),
+        # audio_in_filter=NoisereduceFilter(),
         video_in_enabled=True,
         video_out_enabled=True,
         video_out_width=736,
@@ -57,12 +63,17 @@ async def run_bot(webrtc_connection):
         api_key=os.getenv("DEEPGRAM_API_KEY"),
     )
 
-    llm = GoogleLLMService(api_key=os.getenv("GOOGLE_API_KEY"))
+    llm = GoogleLLMService(
+        api_key=os.getenv("GOOGLE_API_KEY"),
+        params=GoogleLLMService.InputParams(
+            temperature=0.5,
+        ),
+    )
 
     # tts = OpenAITTSService(base_url="https://dev-vh-voice-center.vuihoc.vn/api/v2", api_key="5b62ef4f-87d9-4928-865a-8d4c70e0bbf9", sample_rate=24000)
     tts = DeepgramTTSService(api_key=os.getenv("DEEPGRAM_API_KEY"))
 
-    gst = GStreamerPipelinePlayer()
+    gst = GStreamerPipelinePlayerNew()
 
     context = OpenAILLMContext()
     context_aggregator = llm.create_context_aggregator(context)
@@ -72,6 +83,20 @@ async def run_bot(webrtc_connection):
 
     async def is_play_pipeline(frame: Frame):
         return isinstance(frame, PlayPipelineFrame)
+
+    async def is_tts_triggered(frame: Frame):
+        """Identifies frames that would typically trigger a TTS service to speak.
+        Returns True if the frame should be filtered out (dropped) from this path.
+        """
+        if isinstance(frame, TTSSpeakFrame):
+            return True
+        # Check for TextFrame, ensuring it's not a transcription frame (which TTS usually ignores)
+        # or other specific TextFrame subtypes you want TTS to ignore.
+        if isinstance(frame, TextFrame) and not isinstance(
+            frame, (InterimTranscriptionFrame, TranscriptionFrame)
+        ):
+            return True
+        return False
 
     async def is_not_playing(frame: Frame):
         return not gst.is_playing
@@ -83,13 +108,8 @@ async def run_bot(webrtc_connection):
             stt,
             context_aggregator.user(),
             llm,
-            ParallelPipeline(
-                [
-                    FunctionFilter(is_play_pipeline),
-                    gst,
-                ],
-                [FunctionFilter(is_not_playing), tts],
-            ),
+            tts,
+            gst,
             context_aggregator.assistant(),
             pipecat_transport.output(),
         ]

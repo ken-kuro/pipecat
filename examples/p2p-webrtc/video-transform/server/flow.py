@@ -2,7 +2,7 @@ import os
 import textwrap
 from typing import Dict, List, TypedDict
 
-from gst import PlayPipelineFrame
+from gst_new import PlayPipelineFrame
 from loguru import logger
 from pipecat_flows import FlowArgs, FlowManager, FlowResult, FlowsFunctionSchema, NodeConfig
 
