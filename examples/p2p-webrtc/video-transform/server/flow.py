@@ -2,7 +2,8 @@ import os
 import textwrap
 from typing import Dict, List, Literal, TypedDict
 
-from gst import PlayPipelineFrame
+# from gst import PlayPipelineFrame
+from gst_new import PlayPipelineFrame
 from loguru import logger
 from numba.scripts.generate_lower_listing import description
 from pipecat_flows import FlowArgs, FlowManager, FlowResult, FlowsFunctionSchema, NodeConfig
@@ -295,7 +296,10 @@ def create_initial_node() -> NodeConfig:
                 "content": (
                     "You are a Pedagogical Pattern Orchestrator for an AI English learning platform designed for young children.\n"
                     "Based on the lesson goal, conversation history, and assets provided, determine the most appropriate pedagogical action.\n"
-                    "Your response might be converted to audio, so avoid special characters, symbols or emojis."
+                    "Your response might be converted to audio, so avoid special characters, symbols or emojis.\n"
+                    "If you select a video to play, your response for that turn must ONLY be the function call. Do not output any text, encouragement, or narration in that turn. Do not output any text before or after the function call. Only use TTS/text if there is no suitable video for the pedagogical action.\n"
+                    "Never output both a function call and a text response in the same turn. If a video is available and selected, do not output any text for that turn.\n"
+                    "When you want to play a video, you must use the function/tool call interface, not text."
                 ),
             }
         ],
@@ -307,14 +311,17 @@ def create_initial_node() -> NodeConfig:
                     f"Available videos: {video_configs}\n"
                     "Your goal is to guide the student through the lesson following this sequence: Introduce topic, present examples, then move to practice.\n"
                     "Rules for function calls:\n"
-                    "- When you decide to use a function, your response for that turn should *only* consist of the function call. Do not include any other text or speech.\n"
+                    "- If you select a video to play, your response for that turn must ONLY be the function call. Do not output any text, encouragement, or narration in that turn.\n"
+                    "- Never output both a function call and a text response in the same turn.\n"
+                    "- Only use TTS/text if there is no suitable video for the pedagogical action.\n"
+                    "- Never include any other text or speech in your response when you call a function.\n"
                 ),
             }
         ],
         "functions": [
             FlowsFunctionSchema(
                 name="play_video",
-                description="Plays a video by filename.",
+                description="Plays a video by filename. When you call this function, do not include any other text or speech in your response.",
                 properties={
                     "filename": {
                         "type": "string",
@@ -323,6 +330,7 @@ def create_initial_node() -> NodeConfig:
                 },
                 required=["filename"],
                 handler=play_video_handler,
+                transition_callback=transits_to_initial,
             ),
             FlowsFunctionSchema(
                 name="move_to_practice",
@@ -345,7 +353,10 @@ def create_practice_node() -> NodeConfig:
                 "content": (
                     "You are a Pedagogical Pattern Orchestrator for an AI English learning platform designed for young children.\n"
                     "Based on the lesson goal, conversation history, and assets provided, determine the most appropriate pedagogical action.\n"
-                    "Your response might be converted to audio, so avoid special characters, symbols or emojis."
+                    "Your response might be converted to audio, so avoid special characters, symbols or emojis.\n"
+                    "If you select a video to play, your response for that turn must ONLY be the function call. Do not output any text, encouragement, or narration in that turn. Do not output any text before or after the function call. Only use TTS/text if there is no suitable video for the pedagogical action.\n"
+                    "Never output both a function call and a text response in the same turn. If a video is available and selected, do not output any text for that turn.\n"
+                    "When you want to play a video, you must use the function/tool call interface, not text."
                 ),
             }
         ],
@@ -359,14 +370,17 @@ def create_practice_node() -> NodeConfig:
                     f"Encourage and correct as needed. If the user makes a mistake more than {retry_limit} times for a word, summarize that word and move on.\n"
                     "After all target words are practiced, conclude the lesson, summarize key points, say goodbye, and then use the `end_conversation` function."
                     "Rules for function calls:\n"
-                    "- When you decide to use a function, your response for that turn should *only* consist of the function call. Do not include any other text or speech.\n"
+                    "- If you select a video to play, your response for that turn must ONLY be the function call. Do not output any text, encouragement, or narration in that turn.\n"
+                    "- Never output both a function call and a text response in the same turn.\n"
+                    "- Only use TTS/text if there is no suitable video for the pedagogical action.\n"
+                    "- Never include any other text or speech in your response when you call a function.\n"
                 ),
             }
         ],
         "functions": [
             FlowsFunctionSchema(
                 name="play_video",
-                description="Plays a video by filename.",
+                description="Plays a video by filename. When you call this function, do not include any other text or speech in your response.",
                 properties={
                     "filename": {
                         "type": "string",
@@ -375,6 +389,7 @@ def create_practice_node() -> NodeConfig:
                 },
                 required=["filename"],
                 handler=play_video_handler,
+                transition_callback=transits_to_practice,
             ),
             FlowsFunctionSchema(
                 name="end_conversation",

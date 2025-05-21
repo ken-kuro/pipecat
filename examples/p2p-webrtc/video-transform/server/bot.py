@@ -7,9 +7,9 @@ import os
 
 from dotenv import load_dotenv
 from flow import create_initial_node
-from gst import GStreamerPipelinePlayer, PlayPipelineFrame
 
-# from gst_new import GStreamerPipelinePlayerNew, PlayPipelineFrame
+# from gst import GStreamerPipelinePlayer, PlayPipelineFrame
+from gst_new import GStreamerPipelinePlayerNew, PlayPipelineFrame
 from loguru import logger
 from pipecat_flows import FlowManager
 
@@ -70,11 +70,10 @@ async def run_bot(webrtc_connection):
         ),
     )
 
-    # tts = OpenAITTSService(base_url="https://dev-vh-voice-center.vuihoc.vn/api/v2", api_key="5b62ef4f-87d9-4928-865a-8d4c70e0bbf9", sample_rate=24000)
     tts = DeepgramTTSService(api_key=os.getenv("DEEPGRAM_API_KEY"))
 
-    gst = GStreamerPipelinePlayer()
-    # gst = GStreamerPipelinePlayerNew()
+    # gst = GStreamerPipelinePlayer()
+    gst = GStreamerPipelinePlayerNew()
 
     context = OpenAILLMContext()
     context_aggregator = llm.create_context_aggregator(context)
@@ -117,6 +116,7 @@ async def run_bot(webrtc_connection):
             #     [FunctionFilter(is_not_playing), tts],
             # ),
             gst,
+            tts,
             context_aggregator.assistant(),
             pipecat_transport.output(),
         ]
