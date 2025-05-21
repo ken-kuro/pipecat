@@ -7,7 +7,9 @@ import os
 
 from dotenv import load_dotenv
 from flow import create_initial_node
-from gst_new import GStreamerPipelinePlayerNew, PlayPipelineFrame
+from gst import GStreamerPipelinePlayer, PlayPipelineFrame
+
+# from gst_new import GStreamerPipelinePlayerNew, PlayPipelineFrame
 from loguru import logger
 from pipecat_flows import FlowManager
 
@@ -26,10 +28,8 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.processors.consumer_processor import ConsumerProcessor
 from pipecat.processors.filters.function_filter import FunctionFilter
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
-from pipecat.processors.producer_processor import ProducerProcessor
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.google.llm import GoogleLLMService
@@ -73,7 +73,8 @@ async def run_bot(webrtc_connection):
     # tts = OpenAITTSService(base_url="https://dev-vh-voice-center.vuihoc.vn/api/v2", api_key="5b62ef4f-87d9-4928-865a-8d4c70e0bbf9", sample_rate=24000)
     tts = DeepgramTTSService(api_key=os.getenv("DEEPGRAM_API_KEY"))
 
-    gst = GStreamerPipelinePlayerNew()
+    gst = GStreamerPipelinePlayer()
+    # gst = GStreamerPipelinePlayerNew()
 
     context = OpenAILLMContext()
     context_aggregator = llm.create_context_aggregator(context)
@@ -108,7 +109,13 @@ async def run_bot(webrtc_connection):
             stt,
             context_aggregator.user(),
             llm,
-            tts,
+            # ParallelPipeline(
+            #     [
+            #         FunctionFilter(is_play_pipeline),
+            #         gst,
+            #     ],
+            #     [FunctionFilter(is_not_playing), tts],
+            # ),
             gst,
             context_aggregator.assistant(),
             pipecat_transport.output(),

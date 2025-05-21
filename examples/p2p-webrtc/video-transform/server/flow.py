@@ -1,12 +1,46 @@
 import os
 import textwrap
-from typing import Dict, List, TypedDict
+from typing import Dict, List, Literal, TypedDict
 
 from gst_new import PlayPipelineFrame
 from loguru import logger
+from numba.scripts.generate_lower_listing import description
 from pipecat_flows import FlowArgs, FlowManager, FlowResult, FlowsFunctionSchema, NodeConfig
 
 from pipecat.frames.frames import ErrorFrame
+
+base_video_path = (
+    "/home/ken-kuro/PycharmProjects/pipecat/examples/p2p-webrtc/video-transform/server/"
+)
+
+PedagogicalActionTag = Literal[
+    "GREETING",
+    "LESSON_INTRODUCTION",
+    "TOPIC_INTRODUCTION",
+    "VOCABULARY_INTRODUCTION",
+    "PRONUNCIATION_EXAMPLE",
+    "REPETITION_PROMPT",  # e.g., "Can you say it?"
+    "QUESTION_PROMPT",  # e.g., "What is this?"
+    "ACTIVITY_PROMPT",  # e.g., "Let's listen and repeat"
+    "PRACTICE_TRANSITION",
+    "CLARIFICATION",  # e.g., saying a word slower, rephrasing
+    "ENCOURAGEMENT",  # e.g., "Great job!", "Good try!"
+    "AFFIRMATION",  # e.g., "That's right!"
+    "CORRECTION_PROMPT",  # e.g., "Let's try again!"
+    "SUMMARY",
+    "GOODBYE",
+    "LESSON_SEGMENT_TRANSITION",  # For moving between parts of a lesson
+]
+
+TopicTag = Literal[
+    "GENERAL_CONVERSATION",  # For greetings, goodbyes, general encouragement
+    "LESSON_STRUCTURE",  # For transitions, intros, outros not tied to specific content
+    "INSECTS",
+    "ANIMALS",
+    "COLORS",
+    "NUMBERS",
+    "ACTIONS",
+]
 
 
 class VideoConfig(TypedDict):
@@ -14,28 +48,14 @@ class VideoConfig(TypedDict):
     description: str  # Detailed description of the video content and purpose
     transcription: str  # Full transcription of the video's audio
     # New fields for better matching:
-    pedagogical_action_tags: List[
-        str
-    ]  # e.g., ["greeting", "lesson_intro", "pronunciation_example", "practice_transition"]
-    topic_tags: List[str]  # e.g., ["general", "insects", "animals", "colors"]
+    pedagogical_action_tags: List[PedagogicalActionTag]
+    topic_tags: List[TopicTag]
     specific_words_covered: List[str]  # e.g., ["ant", "butterfly"]
 
 
-base_video_path = (
-    "/home/ken-kuro/PycharmProjects/pipecat/examples/p2p-webrtc/video-transform/server/"
-)
-
 video_configs: List[VideoConfig] = [
     VideoConfig(
-        filename="how-are-you-today.mp4",
-        transcription="How are you today?",
-        description="A general greeting video asking the user how they are.",
-        pedagogical_action_tags=["greeting", "conversation_starter"],
-        topic_tags=["general"],
-        specific_words_covered=[],
-    ),
-    VideoConfig(
-        filename="opening.mp4",
+        filename="letlookat.mp4",
         transcription=textwrap.dedent("""\
             Let’s look at this picture!
             I see some tiny friends here!
@@ -43,12 +63,12 @@ video_configs: List[VideoConfig] = [
             Now Let’s learn together
         """),
         description="Introduces the topic of insects and prepares the child for learning.",
-        pedagogical_action_tags=["lesson_intro", "topic_introduction"],
-        topic_tags=["insects"],
-        specific_words_covered=[],
+        pedagogical_action_tags=["LESSON_INTRODUCTION", "TOPIC_INTRODUCTION", "ACTIVITY_PROMPT"],
+        topic_tags=["INSECTS", "LESSON_STRUCTURE"],
+        specific_words_covered=["insects"],
     ),
     VideoConfig(
-        filename="example.mp4",
+        filename="thisisanant.mp4",
         transcription=textwrap.dedent("""\
             This is an ant.
             a a Ant
@@ -56,25 +76,163 @@ video_configs: List[VideoConfig] = [
             Let's. Say it — but--ter--fly.
         """),
         description="Shows examples of insects (ant, butterfly) and demonstrates their pronunciation.",
-        pedagogical_action_tags=["pronunciation_example", "vocabulary_introduction"],
-        topic_tags=["insects"],
+        pedagogical_action_tags=[
+            "VOCABULARY_INTRODUCTION",
+            "PRONUNCIATION_EXAMPLE",
+            "REPETITION_PROMPT",
+        ],
+        topic_tags=["INSECTS"],
         specific_words_covered=["ant", "butterfly"],
     ),
     VideoConfig(
-        filename="practice.mp4",
+        filename="soletpractice.mp4",
         transcription=textwrap.dedent("""\
             So let's practice new insect words with Rino.
             Kids, let's listen and repeat after Rino
         """),
         description="Transitions the lesson to a practice session for new insect words.",
-        pedagogical_action_tags=["practice_transition", "activity_prompt"],
-        topic_tags=["insects"],
+        pedagogical_action_tags=["PRACTICE_TRANSITION", "ACTIVITY_PROMPT"],
+        topic_tags=["INSECTS", "LESSON_STRUCTURE"],
+        specific_words_covered=[],
+    ),
+    VideoConfig(
+        filename="antcanyousay.mp4",
+        transcription=textwrap.dedent("""\
+            Ant! Can you say it?
+        """),
+        description="Shows an ant and prompts the child to say the word 'ant'.",
+        pedagogical_action_tags=[
+            "VOCABULARY_INTRODUCTION",
+            "PRONUNCIATION_EXAMPLE",
+            "REPETITION_PROMPT",
+        ],
+        topic_tags=["INSECTS"],
+        specific_words_covered=["ant"],
+    ),
+    VideoConfig(
+        filename="antslow.mp4",
+        transcription=textwrap.dedent("""\
+            Ah, this is an ant.
+        """),
+        description="Pronounces the word 'ant' clearly, possibly more slowly for clarification.",
+        pedagogical_action_tags=[
+            "VOCABULARY_INTRODUCTION",
+            "PRONUNCIATION_EXAMPLE",
+            "CLARIFICATION",
+        ],
+        topic_tags=["INSECTS"],
+        specific_words_covered=["ant"],
+    ),
+    VideoConfig(
+        filename="butterflylettry.mp4",
+        transcription=textwrap.dedent("""\
+            Let's try again! Butterfly
+        """),
+        description="Encourages another attempt and clearly pronounces 'butterfly'.",
+        pedagogical_action_tags=[
+            "CORRECTION_PROMPT",
+            "PRONUNCIATION_EXAMPLE",
+            "VOCABULARY_INTRODUCTION",
+        ],
+        topic_tags=["INSECTS"],
+        specific_words_covered=["butterfly"],
+    ),
+    VideoConfig(
+        filename="goodtrymoveon.mp4",
+        transcription=textwrap.dedent("""\
+            Ok good try! Let's move on.
+        """),
+        description="Encourages the child after an attempt and transitions to the next part.",
+        pedagogical_action_tags=["ENCOURAGEMENT", "LESSON_SEGMENT_TRANSITION"],
+        topic_tags=["LESSON_STRUCTURE"],
+        specific_words_covered=[],
+    ),
+    VideoConfig(
+        filename="greatjob.mp4",
+        transcription=textwrap.dedent("""\
+            Yes, great job! You did it!
+        """),
+        description="Praises the child for a successful attempt.",
+        pedagogical_action_tags=["ENCOURAGEMENT", "AFFIRMATION"],
+        topic_tags=["GENERAL_CONVERSATION"],
+        specific_words_covered=[],
+    ),
+    VideoConfig(
+        filename="greatyougotit.mp4",
+        transcription=textwrap.dedent("""\
+            Great! You got it!
+        """),
+        description="Praises the child for understanding or succeeding.",
+        pedagogical_action_tags=["ENCOURAGEMENT", "AFFIRMATION"],
+        topic_tags=["GENERAL_CONVERSATION"],
+        specific_words_covered=[],
+    ),
+    VideoConfig(
+        filename="insectagain.mp4",
+        transcription=textwrap.dedent("""\
+            I'll say it again. Insects
+        """),
+        description="Repeats the word 'insects' for clarification or emphasis.",
+        pedagogical_action_tags=[
+            "CLARIFICATION",
+            "PRONUNCIATION_EXAMPLE",
+            "VOCABULARY_INTRODUCTION",
+        ],
+        topic_tags=["INSECTS"],
+        specific_words_covered=["insects"],
+    ),
+    VideoConfig(
+        filename="insectscanyousay.mp4",
+        transcription=textwrap.dedent("""\
+            Insects! Can you say it?
+        """),
+        description="Prompts the child to say the word 'insects'.",
+        pedagogical_action_tags=[
+            "VOCABULARY_INTRODUCTION",
+            "PRONUNCIATION_EXAMPLE",
+            "REPETITION_PROMPT",
+        ],
+        topic_tags=["INSECTS"],
+        specific_words_covered=["insects"],
+    ),
+    VideoConfig(
+        filename="lettryagain.mp4",
+        transcription=textwrap.dedent("""\
+            Ok, let's try again!
+        """),
+        description="Encourages the child to make another attempt after a mistake.",
+        pedagogical_action_tags=["ENCOURAGEMENT", "CORRECTION_PROMPT"],
+        topic_tags=["LESSON_STRUCTURE"],
+        specific_words_covered=[],
+    ),
+    VideoConfig(
+        filename="slowbutterfly.mp4",
+        transcription=textwrap.dedent("""\
+            Here we go again. Butterfly
+        """),
+        description="Pronounces 'butterfly' again, possibly slower for clarity.",
+        pedagogical_action_tags=[
+            "CLARIFICATION",
+            "PRONUNCIATION_EXAMPLE",
+            "VOCABULARY_INTRODUCTION",
+        ],
+        topic_tags=["INSECTS"],
+        specific_words_covered=["butterfly"],
+    ),
+    VideoConfig(
+        filename="thatright.mp4",
+        transcription=textwrap.dedent("""\
+            That's right! You did it!
+        """),
+        description="Affirms the child's correct response and praises them.",
+        pedagogical_action_tags=["AFFIRMATION", "ENCOURAGEMENT"],
+        topic_tags=["GENERAL_CONVERSATION"],
         specific_words_covered=[],
     ),
 ]
 
 lesson_goal = (
-    "Teach students about insects and help them practice new words like butterfly, ant, and bee."
+    "Teach students about insects and help them practice new words like insects, butterfly and ant."
 )
 retry_limit = 3
 
