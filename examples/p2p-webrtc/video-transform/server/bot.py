@@ -83,13 +83,14 @@ async def run_bot(webrtc_connection):
             stt,
             context_aggregator.user(),
             llm,
-            ParallelPipeline(
-                [
-                    FunctionFilter(is_play_pipeline),
-                    gst,
-                ],
-                [FunctionFilter(is_not_playing), tts],
-            ),
+            # ParallelPipeline(
+            #     [
+            #         FunctionFilter(is_play_pipeline),
+            #         gst,
+            #     ],
+            #     [FunctionFilter(is_not_playing), tts],
+            # ),
+            gst,
             context_aggregator.assistant(),
             pipecat_transport.output(),
         ]
