@@ -330,7 +330,6 @@ def create_initial_node() -> NodeConfig:
                 },
                 required=["filename"],
                 handler=play_video_handler,
-                transition_callback=transits_to_initial,
             ),
             FlowsFunctionSchema(
                 name="move_to_practice",
@@ -389,7 +388,6 @@ def create_practice_node() -> NodeConfig:
                 },
                 required=["filename"],
                 handler=play_video_handler,
-                transition_callback=transits_to_practice,
             ),
             FlowsFunctionSchema(
                 name="end_conversation",
