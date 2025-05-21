@@ -44,7 +44,7 @@ async def run_bot(webrtc_connection):
         audio_in_enabled=True,
         audio_out_enabled=True,
         audio_out_10ms_chunks=2,
-        # audio_in_filter=NoisereduceFilter(),
+        audio_in_filter=NoisereduceFilter(),
         video_in_enabled=True,
         video_out_enabled=True,
         video_out_width=736,
