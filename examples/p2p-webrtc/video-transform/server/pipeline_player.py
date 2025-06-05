@@ -74,14 +74,14 @@ class GStreamerPipelinePlayer(FrameProcessor):
         self._player: Optional[Gst.Pipeline] = None
         self._glib_loop: Optional[GLib.MainLoop] = None
         self._pipeline_future: Optional[asyncio.Future] = None
-        self._is_playing: bool = False
 
         Gst.init()
 
     @property
     def is_playing(self) -> bool:
-        """Return True if a pipeline is currently playing."""
-        return self._is_playing
+        """Return True if a pipeline is currently playing or queued."""
+        pipeline_active = self._pipeline_future is not None and not self._pipeline_future.done()
+        return pipeline_active or not self._pipeline_queue.empty()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -112,7 +112,6 @@ class GStreamerPipelinePlayer(FrameProcessor):
         if self._pipeline_task:
             await self.cancel_task(self._pipeline_task)
             self._pipeline_task = None
-        self._is_playing = False
 
     async def _cancel(self, frame: CancelFrame):
         await self._stop(frame)
@@ -122,7 +121,6 @@ class GStreamerPipelinePlayer(FrameProcessor):
             pipeline_description = await self._pipeline_queue.get()
             error: Optional[str] = None
             try:
-                self._is_playing = True
                 error = await self._play_pipeline(pipeline_description)
             except asyncio.CancelledError:
                 raise
@@ -133,7 +131,6 @@ class GStreamerPipelinePlayer(FrameProcessor):
             finally:
                 await self.push_frame(PlayPipelineEndFrame(error=error))
                 self._pipeline_queue.task_done()
-                self._is_playing = False
 
     async def _play_pipeline(self, pipeline_description: str) -> Optional[str]:
         if self._pipeline_future and not self._pipeline_future.done():
@@ -204,7 +201,6 @@ class GStreamerPipelinePlayer(FrameProcessor):
             self._pipeline_future = None
         self._player = None
         self._glib_loop = None
-        self._is_playing = False
 
     #
     # GStreamer helpers
