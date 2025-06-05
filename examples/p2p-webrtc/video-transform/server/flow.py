@@ -3,7 +3,7 @@ import textwrap
 from typing import Dict, List, Literal, TypedDict
 
 # from gst import PlayPipelineFrame
-from gst_new import PlayPipelineFrame
+from pipeline_player import PlayPipelineFrame
 from loguru import logger
 from numba.scripts.generate_lower_listing import description
 from pipecat_flows import FlowArgs, FlowManager, FlowResult, FlowsFunctionSchema, NodeConfig
