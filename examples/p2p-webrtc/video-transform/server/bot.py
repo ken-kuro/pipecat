@@ -8,8 +8,10 @@ import os
 from dotenv import load_dotenv
 from flow import create_initial_node
 
-# from gst import GStreamerPipelinePlayer, PlayPipelineFrame
-from gst_new import GStreamerPipelinePlayerNew, PlayPipelineFrame
+from pipecat.processors.gstreamer import (
+    GStreamerPipelinePlayer,
+    PlayPipelineFrame,
+)
 from loguru import logger
 from pipecat_flows import FlowManager
 
@@ -72,8 +74,7 @@ async def run_bot(webrtc_connection):
 
     tts = DeepgramTTSService(api_key=os.getenv("DEEPGRAM_API_KEY"))
 
-    # gst = GStreamerPipelinePlayer()
-    gst = GStreamerPipelinePlayerNew()
+    gst = GStreamerPipelinePlayer()
 
     context = OpenAILLMContext()
     context_aggregator = llm.create_context_aggregator(context)
